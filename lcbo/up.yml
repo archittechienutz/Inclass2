@@ -1,0 +1,58 @@
+- name: Install psql client
+  become: true
+  apt: name={{ item }} update_cache=true state=latest
+  with_items:
+  - postgresql-client
+- name: Install psycopg2 python package
+  ansible.builtin.pip:
+    name: psycopg2
+- name: Create the database specified in vars
+  postgresql_db: name={{ db_name }}
+    login_host={{ connect_host }}
+    login_user={{ connect_user }}
+    login_password={{ connect_password }}
+    template='template0'
+    state=present
+- name: Ensure user has access to the new database
+  postgresql_user: login_db={{ db_name }}
+    login_host={{ connect_host }}
+    login_user={{ connect_user }}
+    login_password={{ connect_password }}
+    name={{ db_user }}
+    password={{ db_password }}
+    state=present
+- name: Ensure user does not have unnecessary permissions
+  postgresql_user: login_db={{ db_name }}
+    name={{ db_user }}
+    login_host={{ connect_host }}
+    login_user={{ connect_user }}
+    login_password={{ connect_password }}
+    role_attr_flags=NOSUPERUSER,NOCREATEDB
+    state=present
+- name: Download lcbo database
+  shell: "curl -o /tmp/lcboapi.tgz https://heycarsten.s3.amazonaws.com/lcboapi-2019-01-21.tgz && tar -zxvf /tmp/lcboapi.tgz --directory /tmp"
+  args:
+    creates: "/tmp/lcboapi-2019-01-21.sql"
+- name: clean tsearch2
+  shell: "grep -v tsearch2 /tmp/lcboapi-2019-01-21.sql> /tmp/lcboapi-clean.sql"
+  args:
+    creates: "/tmp/lcboapi-clean.sql"
+- name: Restore dump
+  postgresql_db: name={{ db_name }}
+    login_host={{ connect_host }}
+    login_user={{ connect_user }}
+    login_password={{ connect_password }}
+    owner='lcbo'
+    template='template0'
+    state='restore'
+    target='/tmp/lcboapi-clean.sql'
+- name: GRANT ALL PRIVILEGES ON DATABASE TABLES TO USER
+  community.postgresql.postgresql_privs:
+    login_host={{ connect_host }}
+    login_user={{ connect_user }}
+    login_password={{ connect_password }}
+    login_db={{ db_name }}
+    obj=ALL_IN_SCHEMA
+    privs=ALL
+    type=table
+    role={{ db_user }}

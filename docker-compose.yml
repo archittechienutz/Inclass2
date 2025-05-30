@@ -1,0 +1,3 @@
+include:
+  - signoz/docker-compose-minimal.yaml
+  - lcbo/docker-compose.yml
